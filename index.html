@@ -1,21 +1,419 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
+<base target="_top">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pedidos · Corazón de Tierra</title>
 <meta name="theme-color" content="#2B5615">
+<link rel="icon" href="logo.png">
+<script>
+/* Puente con el gestor (Google Apps Script). Envía los datos sin cuentas de Google del navegador. */
+(function () {
+  var API = "https://script.google.com/macros/s/AKfycbzUwuO3Fi0CjtldIwJ4CEdKZPK61EsmP8bYFTL5YhTzdDWJVcxjGFVmS3WZ6OGWq2DkUw/exec";
+  function llamar(fn, args) {
+    return fetch(API, { method: "POST", body: JSON.stringify({ fn: fn, args: args }), credentials: "omit", redirect: "follow" })
+      .then(function (r) { if (!r.ok) throw new Error("Error de conexión (" + r.status + ")"); return r.json(); })
+      .then(function (j) { if (!j.ok) throw new Error(j.error || "Error"); return j.r; });
+  }
+  function corredor() {
+    var ok = null, mal = null, o;
+    o = new Proxy({}, { get: function (t, k) {
+      if (k === "withSuccessHandler") return function (f) { ok = f; return o; };
+      if (k === "withFailureHandler") return function (f) { mal = f; return o; };
+      return function () {
+        llamar(String(k), Array.prototype.slice.call(arguments))
+          .then(function (r) { if (ok) ok(r); }, function (e) { if (mal) mal(e); });
+      };
+    } });
+    return o;
+  }
+  var parametros = {};
+  new URLSearchParams(location.search).forEach(function (v, k) { parametros[k] = v; });
+  window.google = { script: {
+    get run() { return corredor(); },
+    url: { getLocation: function (cb) { setTimeout(function () { cb({ parameter: parametros }); }, 0); } }
+  } };
+})();
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;800;900&display=swap" rel="stylesheet">
 <style>
-  html, body { margin: 0; height: 100%; background: #EFEDE6; }
-  iframe { border: 0; width: 100%; height: 100%; display: block; }
+  :root { --verde:#2B5615; --verde-osc:#1f4010; --verde-claro:#e3ead9; --pizarra:#3E4560; --crema:#EFEDE6; --papel:#fbfaf6;
+    --tinta:#26282f; --gris:#6b6d75; --linea:#dcd8cc; --rojo:#a33b2b; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--crema); color:var(--tinta); font-family:Montserrat,'Trebuchet MS',Arial,sans-serif; line-height:1.5; font-size:15px; }
+  main { max-width:560px; margin:0 auto; padding:8px 16px 120px; }
+  header { text-align:center; padding:18px 0 4px; }
+  header img { width:210px; max-width:62%; height:auto; display:block; margin:0 auto; }
+  .franja { margin-top:14px; border-radius:14px; padding:12px 16px; text-align:center; color:#fff; background:var(--verde); }
+  .franja.cerrada { background:var(--pizarra); }
+  .franja b { display:block; font-weight:900; letter-spacing:2px; font-size:16px; text-transform:uppercase; }
+  .franja span { display:block; font-size:13px; opacity:.92; margin-top:2px; }
+  .tarjeta { background:var(--papel); border:1px solid var(--linea); border-radius:16px; padding:18px 16px; margin-top:14px; }
+  h2 { font-weight:900; font-size:19px; margin:0 0 10px; color:var(--verde); text-transform:uppercase; letter-spacing:.6px; line-height:1.25; }
+  h3 { font-weight:900; font-size:16px; margin:26px 0 2px; color:var(--pizarra); text-transform:uppercase; letter-spacing:1.6px; }
+  h3::after { content:""; display:block; width:38px; height:3px; background:var(--verde); border-radius:2px; margin-top:6px; }
+  label { display:block; font-size:13px; font-weight:600; margin:14px 0 5px; color:var(--pizarra); }
+  input[type=text], input[type=tel], input[type=email], select {
+    width:100%; padding:12px 14px; font-size:16px; border:1px solid #cfcabb; border-radius:10px; background:#fff; font-family:inherit; color:var(--tinta); }
+  input:focus, select:focus { outline:2px solid var(--verde); outline-offset:1px; }
+  button { font-family:inherit; font-size:16px; cursor:pointer; }
+  .principal { width:100%; margin-top:18px; padding:15px; background:var(--verde); color:#fff; border:0; border-radius:999px; font-weight:800; letter-spacing:.8px; text-transform:uppercase; font-size:15px; }
+  .principal:disabled { background:#9fb093; cursor:default; }
+  .enlace { background:none; border:0; color:var(--pizarra); text-decoration:underline; padding:12px 0; font-size:14px; width:100%; }
+  .nota { font-size:13px; color:var(--gris); }
+  .error { font-size:14px; color:var(--rojo); margin-top:10px; white-space:pre-line; }
+  .producto { display:flex; gap:14px; padding:14px 0; border-bottom:1px solid var(--linea); }
+  .producto:last-child { border-bottom:0; }
+  .foto { width:84px; height:84px; border-radius:12px; flex:none; background:var(--crema); overflow:hidden; display:flex; align-items:center; justify-content:center;
+    color:#c9c4b4; font-weight:900; font-size:30px; }
+  .foto img { width:100%; height:100%; object-fit:cover; display:block; }
+  .producto .info { flex:1; min-width:0; }
+  .producto .nombre { font-weight:800; font-size:15px; text-transform:uppercase; letter-spacing:.3px; line-height:1.3; }
+  .producto .tam { font-weight:500; color:var(--gris); text-transform:none; letter-spacing:0; font-size:13px; }
+  .producto .detalle { font-size:13px; color:var(--gris); margin:3px 0 8px; }
+  .producto .pie { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .precio { font-weight:800; color:var(--pizarra); font-size:16px; }
+  .cant { display:flex; align-items:center; gap:6px; }
+  .cant button { width:38px; height:38px; border-radius:50%; border:2px solid var(--verde); background:#fff; color:var(--verde); font-size:20px; font-weight:800; line-height:1; padding:0; }
+  .cant button.mas { background:var(--verde); color:#fff; }
+  .cant button:disabled { border-color:#d3d0c6; background:#fff; color:#c3c0b6; }
+  .cant span { min-width:22px; text-align:center; font-weight:800; }
+  .agotado { font-size:12px; font-weight:800; color:var(--rojo); text-transform:uppercase; letter-spacing:1px; }
+  .opcion { display:flex; gap:10px; align-items:flex-start; padding:13px; border:1px solid var(--linea); border-radius:12px; margin-top:8px; background:#fff; font-weight:400; font-size:15px; color:var(--tinta); }
+  .opcion:has(input:checked) { border-color:var(--verde); background:var(--verde-claro); }
+  .opcion input { margin-top:4px; accent-color:var(--verde); }
+  .fila { display:flex; justify-content:space-between; gap:12px; padding:5px 0; }
+  .fila.total { font-weight:900; font-size:18px; color:var(--pizarra); border-top:2px solid var(--linea); margin-top:6px; padding-top:10px; }
+  #barra { position:fixed; left:0; right:0; bottom:0; background:var(--pizarra); color:#fff; padding:12px 16px; display:none; box-shadow:0 -4px 16px rgba(0,0,0,.12); }
+  #barra div { max-width:560px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; gap:12px; font-weight:600; font-size:14px; }
+  #barra button { padding:12px 20px; background:var(--crema); color:var(--verde); border:0; border-radius:999px; font-weight:900; letter-spacing:.8px; text-transform:uppercase; font-size:14px; }
+  #barra button:disabled { opacity:.5; }
+  .oculto { display:none !important; }
+  .casilla { display:flex; gap:10px; align-items:flex-start; margin-top:16px; font-size:13px; }
+  .casilla input { accent-color:var(--verde); width:18px; height:18px; flex:none; margin-top:2px; }
+  .casilla label { font-weight:400; color:var(--tinta); }
+  .legal { margin-top:18px; font-size:12px; line-height:1.5; color:var(--gris); background:var(--crema); border-radius:10px; padding:10px 12px; }
+  .aviso-correo { margin-top:16px; background:var(--verde); color:#fff; border-radius:14px; padding:16px; text-align:center; }
+  .aviso-correo b { display:block; font-weight:900; font-size:17px; letter-spacing:1px; text-transform:uppercase; margin-bottom:6px; }
+  .aviso-correo span { display:block; font-size:14px; line-height:1.5; }
+  .aviso-correo.falla { background:var(--rojo); }
+  .pie-pagina { text-align:center; font-size:12px; color:var(--gris); margin-top:22px; letter-spacing:1px; text-transform:uppercase; }
+  a { color:var(--verde); font-weight:600; }
 </style>
 </head>
 <body>
-<iframe id="app" title="Pedidos Corazón de Tierra"></iframe>
+<main>
+  <header>
+    <img src="logo.png" alt="Corazón de Tierra">
+  </header>
+  <div class="franja oculto" id="franja"><b id="franja-titulo"></b><span id="franja-texto"></span></div>
+
+  <section id="p-cargando" class="tarjeta"><p class="nota">Cargando…</p></section>
+
+  <section id="p-cerrado" class="tarjeta oculto">
+    <h2>Pedidos cerrados</h2>
+    <p id="cerrado-texto"></p>
+    <p class="nota" id="cerrado-contacto"></p>
+  </section>
+
+  <section id="p-inicio" class="tarjeta oculto">
+    <h2>Haz tu pedido</h2>
+    <p class="nota">Escribe tu celular y tu correo para empezar.</p>
+    <label for="tel">Celular</label>
+    <input id="tel" type="tel" inputmode="numeric" autocomplete="tel" placeholder="3001234567">
+    <label for="correo">Correo electrónico</label>
+    <input id="correo" type="email" autocomplete="email" placeholder="tucorreo@ejemplo.com">
+    <div class="error" id="inicio-error"></div>
+    <button class="principal" id="btn-continuar">Continuar</button>
+    <p class="nota">Si es tu primera vez, te registras en el siguiente paso.</p>
+  </section>
+
+  <section id="p-nocoincide" class="tarjeta oculto">
+    <h2>Tus datos no coinciden</h2>
+    <p>El celular y el correo no corresponden al mismo registro. Revísalos o escríbenos y lo corregimos.</p>
+    <p id="nocoincide-contacto"></p>
+    <button class="principal" id="btn-revisar">Revisar mis datos</button>
+  </section>
+
+  <section id="p-registro" class="tarjeta oculto">
+    <h2>Regístrate</h2>
+    <p class="nota">Es tu primera vez con este celular y correo. Solo te lo pedimos una vez.</p>
+    <label for="nombre">Nombre completo</label>
+    <input id="nombre" type="text" autocomplete="name">
+    <label for="direccion">Dirección</label>
+    <input id="direccion" type="text" autocomplete="street-address">
+    <label for="unidad">Unidad residencial o barrio</label>
+    <input id="unidad" type="text">
+    <div class="legal">En cumplimiento de la Ley 1581 de 2012, CORAZON DE TIERRA solicita su autorización para tratar sus datos de contacto y entrega con la única finalidad de procesar y enviar su pedido. Puede solicitar la eliminación de su información escribiéndonos al WhatsApp <span id="legal-wa">3232864796</span>.</div>
+    <div class="casilla"><input id="acepta" type="checkbox"><label for="acepta" style="margin:0"><b>Apruebo el manejo de datos</b></label></div>
+    <div class="error" id="registro-error"></div>
+    <button class="principal" id="btn-registrar">Registrarme y continuar</button>
+    <button class="enlace" id="btn-volver-inicio">Cambiar celular o correo</button>
+  </section>
+
+  <section id="p-catalogo" class="oculto">
+    <div class="tarjeta">
+      <h2 id="saludo"></h2>
+      <p class="nota">Elige tus productos y toca <b>Continuar</b>.</p>
+    </div>
+    <div class="tarjeta" id="lista"></div>
+  </section>
+
+  <section id="p-entrega" class="tarjeta oculto">
+    <h2>¿Cómo recibes tu pedido?</h2>
+    <label class="opcion"><input type="radio" name="entrega" value="Tienda" checked><span><b>Recojo en la tienda</b><br><span class="nota" id="tienda-info"></span></span></label>
+    <label class="opcion"><input type="radio" name="entrega" value="Domicilio"><span><b>Domicilio</b><br><span class="nota">Tú pides y pagas el envío a la plataforma que prefieras. Sumamos el embalaje.</span></span></label>
+    <div id="bloque-plataforma" class="oculto">
+      <label for="plataforma">¿Qué plataforma de envío usarás?</label>
+      <select id="plataforma"></select>
+    </div>
+    <h3>Resumen</h3>
+    <div id="resumen"></div>
+    <div class="error" id="entrega-error"></div>
+    <button class="principal" id="btn-enviar">Confirmar pedido</button>
+    <button class="enlace" id="btn-volver-catalogo">Cambiar productos</button>
+  </section>
+
+  <section id="p-listo" class="tarjeta oculto">
+    <h2>¡Pedido recibido!</h2>
+    <p>Tu número de pedido es <b id="listo-num"></b>.</p>
+    <p>Total a pagar: <b id="listo-total"></b></p>
+    <div class="aviso-correo" id="listo-aviso">
+      <b>📩 Revisa tu correo</b>
+      <span id="listo-correo"></span>
+    </div>
+  </section>
+  <p class="pie-pagina">Alimentos vivos · Cali</p>
+</main>
+
+<div id="barra"><div><span id="barra-texto"></span><button id="btn-seguir">Continuar</button></div></div>
+
 <script>
-  // Página de pedidos de Corazón de Tierra (Google Apps Script). Pasa los datos del enlace (pedido y clave de pago).
-  var URL_APP = "https://script.google.com/macros/s/AKfycbzUwuO3Fi0CjtldIwJ4CEdKZPK61EsmP8bYFTL5YhTzdDWJVcxjGFVmS3WZ6OGWq2DkUw/exec";
-  document.getElementById("app").src = URL_APP + location.search;
+  var E = { tel:'', correo:'', nombre:'', tienda:null, cant:{}, inicio:null, fotos:{}, fotosPedidas:false }, FOTOS_EL = {};
+  var $ = function (id) { return document.getElementById(id); };
+  var PANTALLAS = ['cargando','cerrado','inicio','nocoincide','registro','catalogo','entrega','listo'];
+
+  function ver(nombre) {
+    PANTALLAS.forEach(function (p) { $('p-' + p).classList.toggle('oculto', p !== nombre); });
+    $('barra').style.display = nombre === 'catalogo' ? 'block' : 'none';
+    window.scrollTo(0, 0);
+  }
+  function moneda(n) { return '$' + String(Math.round(n || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
+  function llamar(fn, args, btn, exito, errEl) {
+    var texto = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Un momento…'; }
+    if (errEl) errEl.textContent = '';
+    var fin = function () { if (btn) { btn.disabled = false; btn.textContent = texto; } };
+    var r = google.script.run
+      .withSuccessHandler(function (res) { fin(); exito(res || {}); })
+      .withFailureHandler(function () {
+        fin();
+        if (errEl) errEl.textContent = 'No pudimos conectar. Intenta de nuevo en un momento.';
+      });
+    r[fn].apply(r, args);
+  }
+  function contacto(el, w) {
+    el.textContent = '';
+    if (!w) return;
+    var a = document.createElement('a');
+    a.href = 'https://wa.me/57' + String(w).replace(/\D/g, '');
+    a.textContent = 'Escríbenos por WhatsApp al ' + w;
+    el.appendChild(a);
+  }
+  function franja(abierta, titulo, texto) {
+    $('franja').classList.remove('oculto');
+    $('franja').classList.toggle('cerrada', !abierta);
+    $('franja-titulo').textContent = titulo; $('franja-texto').textContent = texto || '';
+  }
+  function cerrado(mensaje) {
+    franja(false, 'Pedidos cerrados', '');
+    $('cerrado-texto').textContent = mensaje || 'En este momento no estamos recibiendo pedidos.';
+    contacto($('cerrado-contacto'), E.inicio && E.inicio.whatsapp);
+    ver('cerrado');
+  }
+  function textoRonda() {
+    return 'Entrega: ' + E.inicio.entrega + ' · Pedidos hasta el ' + E.inicio.cierre;
+  }
+
+  function entrar(res) {
+    E.nombre = res.nombre; E.tienda = res.tienda; E.cant = {};
+    $('saludo').textContent = 'Hola, ' + res.nombre;
+    pintarCatalogo();
+    cargarFotos();
+    ver('catalogo');
+  }
+  function atender(res, errEl) {
+    if (res.estado === 'ok') return entrar(res);
+    if (res.estado === 'nuevo') return ver('registro');
+    if (res.estado === 'no_coincide') { contacto($('nocoincide-contacto'), E.inicio.whatsapp); return ver('nocoincide'); }
+    if (res.estado === 'cerrado') return cerrado(res.mensaje);
+    errEl.textContent = res.mensaje || 'Revisa los datos.';
+  }
+
+  function productos() {
+    var lista = [];
+    E.tienda.catalogo.forEach(function (l) { l.productos.forEach(function (p) { lista.push(p); }); });
+    return lista;
+  }
+  function ponerFoto(el, uri) {
+    var im = document.createElement('img'); im.alt = ''; im.src = uri;
+    im.onload = function () { el.textContent = ''; el.appendChild(im); };
+  }
+  function cargarFotos() {
+    if (E.fotosPedidas) return;
+    E.fotosPedidas = true;
+    google.script.run.withSuccessHandler(function (r) {
+      E.fotos = r || {};
+      Object.keys(E.fotos).forEach(function (n) { if (FOTOS_EL[n]) ponerFoto(FOTOS_EL[n], E.fotos[n]); });
+    }).withFailureHandler(function () { E.fotosPedidas = false; }).apiFotos();
+  }
+  function pintarCatalogo() {
+    var cont = $('lista'); FOTOS_EL = {};
+    cont.textContent = '';
+    if (!E.tienda.catalogo.length) {
+      var v = document.createElement('p'); v.className = 'nota';
+      v.textContent = 'Por ahora no hay productos disponibles.'; cont.appendChild(v);
+    }
+    E.tienda.catalogo.forEach(function (l, i) {
+      var h = document.createElement('h3'); h.textContent = l.nombre;
+      if (i === 0) h.style.marginTop = '0';
+      cont.appendChild(h);
+      if (l.descripcion) { var d = document.createElement('p'); d.className = 'nota'; d.textContent = l.descripcion; cont.appendChild(d); }
+      l.productos.forEach(function (p) { cont.appendChild(filaProducto(p)); });
+    });
+    actualizarBarra();
+  }
+  function filaProducto(p) {
+    var f = document.createElement('div'); f.className = 'producto';
+    var ft = document.createElement('div'); ft.className = 'foto'; ft.textContent = (p.nombre.match(/[A-ZÁÉÍÓÚÑ]/i) || [''])[0].toUpperCase();
+    FOTOS_EL[p.nombre] = ft; if (E.fotos[p.nombre]) ponerFoto(ft, E.fotos[p.nombre]);
+    f.appendChild(ft);
+    var info = document.createElement('div'); info.className = 'info';
+    var n = document.createElement('div'); n.className = 'nombre';
+    n.textContent = p.nombre;
+    if (p.tamano) { var tm = document.createElement('span'); tm.className = 'tam'; tm.textContent = ' · ' + p.tamano; n.appendChild(tm); }
+    var d = document.createElement('div'); d.className = 'detalle'; d.textContent = p.detalle;
+    var pie = document.createElement('div'); pie.className = 'pie';
+    var pr = document.createElement('span'); pr.className = 'precio'; pr.textContent = moneda(p.precio);
+    pie.appendChild(pr);
+    if (p.max <= 0) {
+      var ag = document.createElement('span'); ag.className = 'agotado'; ag.textContent = 'Agotado'; pie.appendChild(ag);
+    } else {
+      var c = document.createElement('div'); c.className = 'cant';
+      var menos = document.createElement('button'); menos.textContent = '−'; menos.setAttribute('aria-label', 'Quitar uno de ' + p.nombre);
+      var num = document.createElement('span'); num.textContent = '0';
+      var mas = document.createElement('button'); mas.className = 'mas'; mas.textContent = '+'; mas.setAttribute('aria-label', 'Agregar uno de ' + p.nombre);
+      var refrescar = function () {
+        var q = E.cant[p.nombre] || 0;
+        num.textContent = q; menos.disabled = q <= 0; mas.disabled = q >= p.max;
+        actualizarBarra();
+      };
+      menos.onclick = function () { E.cant[p.nombre] = Math.max(0, (E.cant[p.nombre] || 0) - 1); refrescar(); };
+      mas.onclick = function () { E.cant[p.nombre] = Math.min(p.max, (E.cant[p.nombre] || 0) + 1); refrescar(); };
+      c.appendChild(menos); c.appendChild(num); c.appendChild(mas); pie.appendChild(c);
+      refrescar();
+    }
+    info.appendChild(n); info.appendChild(d); info.appendChild(pie); f.appendChild(info);
+    return f;
+  }
+  function cuenta() {
+    var domicilio = document.querySelector('input[name=entrega]:checked').value === 'Domicilio';
+    var r = { unidades:0, subtotal:0, embalaje:0, lineas:[] };
+    productos().forEach(function (p) {
+      var q = E.cant[p.nombre] || 0;
+      if (!q) return;
+      r.unidades += q; r.subtotal += q * p.precio;
+      if (domicilio) r.embalaje += q * p.embalaje;
+      r.lineas.push({ nombre:p.nombre, cantidad:q, valor:q * p.precio });
+    });
+    r.total = r.subtotal + r.embalaje; r.domicilio = domicilio;
+    return r;
+  }
+  function actualizarBarra() {
+    var c = cuenta();
+    $('barra-texto').textContent = c.unidades ? c.unidades + (c.unidades === 1 ? ' producto · ' : ' productos · ') + moneda(c.subtotal) : 'Elige tus productos';
+    $('btn-seguir').disabled = !c.unidades;
+  }
+  function filaResumen(a, b, clase) {
+    var f = document.createElement('div'); f.className = 'fila' + (clase ? ' ' + clase : '');
+    var x = document.createElement('span'); x.textContent = a;
+    var y = document.createElement('span'); y.textContent = b;
+    f.appendChild(x); f.appendChild(y); return f;
+  }
+  function pintarResumen() {
+    var c = cuenta(), cont = $('resumen');
+    cont.textContent = '';
+    c.lineas.forEach(function (l) { cont.appendChild(filaResumen(l.cantidad + ' × ' + l.nombre, moneda(l.valor))); });
+    if (c.domicilio) cont.appendChild(filaResumen('Embalaje para envío', moneda(c.embalaje)));
+    cont.appendChild(filaResumen('Total a pagar', moneda(c.total), 'total'));
+    $('bloque-plataforma').classList.toggle('oculto', !c.domicilio);
+  }
+
+  $('btn-continuar').onclick = function () {
+    E.tel = $('tel').value; E.correo = $('correo').value;
+    llamar('apiIdentificar', [E.tel, E.correo], this, function (res) { atender(res, $('inicio-error')); }, $('inicio-error'));
+  };
+  $('btn-revisar').onclick = function () { ver('inicio'); };
+  $('btn-volver-inicio').onclick = function () { ver('inicio'); };
+  $('btn-registrar').onclick = function () {
+    var d = { telefono:E.tel, correo:E.correo, nombre:$('nombre').value, direccion:$('direccion').value,
+      unidad:$('unidad').value, acepta:$('acepta').checked };
+    llamar('apiRegistrar', [d], this, function (res) { atender(res, $('registro-error')); }, $('registro-error'));
+  };
+  $('btn-seguir').onclick = function () {
+    var sel = $('plataforma'); sel.textContent = '';
+    E.tienda.plataformas.forEach(function (p) { var o = document.createElement('option'); o.textContent = p; sel.appendChild(o); });
+    var t = [E.tienda.direccionTienda, E.tienda.horarioRecogida].filter(Boolean).join(' · ');
+    $('tienda-info').textContent = t || 'Te avisamos por correo cuando esté listo.';
+    $('entrega-error').textContent = '';
+    pintarResumen(); ver('entrega');
+  };
+  Array.prototype.forEach.call(document.querySelectorAll('input[name=entrega]'), function (r) { r.onchange = pintarResumen; });
+  $('btn-volver-catalogo').onclick = function () { ver('catalogo'); };
+  $('btn-enviar').onclick = function () {
+    var c = cuenta();
+    var d = { telefono:E.tel, correo:E.correo, entrega:c.domicilio ? 'Domicilio' : 'Tienda',
+      plataforma:c.domicilio ? $('plataforma').value : '',
+      items:c.lineas.map(function (l) { return { nombre:l.nombre, cantidad:l.cantidad }; }) };
+    llamar('apiPedido', [d], this, function (res) {
+      if (res.estado === 'ok') {
+        $('listo-num').textContent = res.numPedido;
+        $('listo-total').textContent = moneda(res.total);
+        $('listo-aviso').classList.toggle('falla', !res.correoEnviado);
+        $('listo-correo').textContent = res.correoEnviado
+          ? 'Te enviamos a ' + E.correo.trim() + ' el resumen de tu pedido, los datos de pago y el botón para reportar tu pago. Si no lo ves, busca en Spam o Promociones.'
+          : 'No pudimos enviarte el correo con las instrucciones de pago. Escríbenos por WhatsApp' + (E.inicio && E.inicio.whatsapp ? ' al ' + E.inicio.whatsapp : '') + ' con tu número de pedido.';
+        return ver('listo');
+      }
+      if (res.estado === 'sin_stock') {
+        E.tienda = res.tienda;
+        productos().forEach(function (p) { if ((E.cant[p.nombre] || 0) > p.max) E.cant[p.nombre] = Math.max(0, p.max); });
+        Object.keys(E.cant).forEach(function (k) { if (!productos().some(function (p) { return p.nombre === k; })) delete E.cant[k]; });
+        pintarCatalogo(); pintarResumen();
+        $('entrega-error').textContent = 'Ajustamos tu pedido por disponibilidad:\n' + res.mensaje + '\nRevisa el resumen y confirma de nuevo.';
+        if (!cuenta().unidades) ver('catalogo');
+        return;
+      }
+      if (res.estado === 'cerrado') return cerrado(res.mensaje);
+      if (res.estado === 'no_coincide' || res.estado === 'nuevo') return ver('inicio');
+      $('entrega-error').textContent = res.mensaje || 'No pudimos registrar el pedido.';
+    }, $('entrega-error'));
+  };
+
+  google.script.run
+    .withSuccessHandler(function (res) {
+      E.inicio = res;
+      if (res.whatsapp) $('legal-wa').textContent = res.whatsapp;
+      if (!res.abierto) return cerrado(res.motivo);
+      franja(true, 'Pedidos abiertos', textoRonda());
+      ver('inicio');
+    })
+    .withFailureHandler(function () { cerrado('No pudimos cargar la página. Intenta de nuevo en un momento.'); })
+    .apiInicio();
 </script>
 </body>
 </html>
