@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pedidos · Corazón de Tierra</title>
+<meta name="theme-color" content="#2B5615">
+<style>
+  html, body { margin: 0; height: 100%; background: #EFEDE6; }
+  iframe { border: 0; width: 100%; height: 100%; display: block; }
+</style>
+</head>
+<body>
+<iframe id="app" title="Pedidos Corazón de Tierra"></iframe>
+<script>
+  // Página de pedidos de Corazón de Tierra (Google Apps Script). Pasa los datos del enlace (pedido y clave de pago).
+  var URL_APP = "https://script.google.com/macros/s/AKfycbzUwuO3Fi0CjtldIwJ4CEdKZPK61EsmP8bYFTL5YhTzdDWJVcxjGFVmS3WZ6OGWq2DkUw/exec";
+  document.getElementById("app").src = URL_APP + location.search;
+</script>
+</body>
+</html>
