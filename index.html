@@ -8,13 +8,45 @@
 <meta name="theme-color" content="#2B5615">
 <link rel="icon" href="logo.png">
 <script>
-/* Puente con el gestor (Google Apps Script). Envía los datos sin cuentas de Google del navegador. */
+/* Puente con el gestor (Google Apps Script). Envía los datos sin cuentas de Google del navegador.
+   Si Google no responde, reintenta una vez; los envíos llevan una huella para no duplicar pedidos ni pagos. */
 (function () {
   var API = "https://script.google.com/macros/s/AKfycbzUwuO3Fi0CjtldIwJ4CEdKZPK61EsmP8bYFTL5YhTzdDWJVcxjGFVmS3WZ6OGWq2DkUw/exec";
-  function llamar(fn, args) {
-    return fetch(API, { method: "POST", body: JSON.stringify({ fn: fn, args: args }), credentials: "omit", redirect: "follow" })
+  var UNA_VEZ = { apiPedido: 1, apiRegistrar: 1, apiPago: 1 };
+  var activos = 0, reloj = null, aviso = null;
+  function lento(mostrar) {
+    if (mostrar && !aviso) {
+      aviso = document.createElement("div");
+      aviso.textContent = "⏳ Seguimos procesando… no cierres la página";
+      aviso.setAttribute("role", "status");
+      aviso.style.cssText = "position:fixed;left:50%;bottom:84px;transform:translateX(-50%);z-index:9999;background:#3E4560;color:#fff;" +
+        "padding:10px 18px;border-radius:999px;font:600 14px Montserrat,Arial,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.2);max-width:92%;text-align:center;";
+      document.body.appendChild(aviso);
+    } else if (!mostrar && aviso) { aviso.remove(); aviso = null; }
+  }
+  function huella() {
+    try { return crypto.randomUUID(); } catch (e) {
+      return Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    }
+  }
+  function intento(fn, args, id, ms) {
+    var ctl = window.AbortController ? new AbortController() : null;
+    var t = ctl ? setTimeout(function () { ctl.abort(); }, ms) : null;
+    var op = { method: "POST", body: JSON.stringify({ fn: fn, args: args, id: id }), credentials: "omit", redirect: "follow" };
+    if (ctl) op.signal = ctl.signal;
+    return fetch(API, op)
       .then(function (r) { if (!r.ok) throw new Error("Error de conexión (" + r.status + ")"); return r.json(); })
-      .then(function (j) { if (!j.ok) throw new Error(j.error || "Error"); return j.r; });
+      .then(function (j) { clearTimeout(t); return j; }, function (e) { clearTimeout(t); throw e; });
+  }
+  function llamar(fn, args) {
+    var id = UNA_VEZ[fn] ? huella() : "", ms = fn === "apiPago" ? 90000 : 30000;
+    activos++;
+    if (!reloj) reloj = setTimeout(function () { lento(true); }, 8000);
+    var fin = function () { activos = Math.max(0, activos - 1); if (!activos) { clearTimeout(reloj); reloj = null; lento(false); } };
+    return intento(fn, args, id, ms)
+      .catch(function () { return new Promise(function (ok) { setTimeout(ok, 1500); }).then(function () { return intento(fn, args, id, ms); }); })
+      .then(function (j) { fin(); if (!j.ok) throw new Error(j.error || "Error"); return j.r; },
+        function () { fin(); throw new Error("Sin conexión con el gestor"); });
   }
   function corredor() {
     var ok = null, mal = null, o;
@@ -212,7 +244,9 @@
       .withSuccessHandler(function (res) { fin(); exito(res || {}); })
       .withFailureHandler(function () {
         fin();
-        if (errEl) errEl.textContent = 'No pudimos conectar. Intenta de nuevo en un momento.';
+        if (errEl) errEl.textContent = fn === 'apiPedido'
+          ? 'No pudimos confirmar tu pedido por un problema de conexión. Revisa tu correo: si te llegó la confirmación, tu pedido ya quedó registrado. Si no, intenta de nuevo.'
+          : 'No pudimos conectar. Intenta de nuevo en un momento.';
       });
     r[fn].apply(r, args);
   }
